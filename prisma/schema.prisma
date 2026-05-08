@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Skill {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   @default("Other")
+  description String?
+  tags        String?  // JSON string
+  visibility  String   @default("private") // public, team, private
+  author      String?
+  user        String?  // Added for user isolation
+  
+  // Relations
+  versions    SkillVersion[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  activeVersion Int?   @default(0)
+  isUploaded    Boolean  @default(false)
+
+  @@unique([name, user]) // Skill names are unique per user
+}
+
+model SkillVersion {
+  id        String   @id @default(cuid())
+  skillId   String
+  version   Int
+  semanticVersion String?  // 语义化版本号，用于企业同步
+  enterpriseSkillId Int?  // 企业skill的id，用于删除同步
+  content   String
+  assetPath String?
+  files     String?
+  changeLog String?
+  createdAt DateTime @default(now())
+  Skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, version])
+}
+
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  apiKey    String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Execution {
+  id              String   @id @default(cuid()) // upload_id
+  taskId          String?
+  query           String?
+  framework       String?
+  tokens          Int?
+  cost            Float?
+  latency         Float?
+  toolCallCount      Int?
+  llmCallCount       Int?
+  inputTokens        Int?
+  outputTokens       Int?
+  toolCallErrorCount Int?
+  cacheReadInputTokens    Int?
+  cacheCreationInputTokens Int?
+  maxSingleCallTokens     Int?
+  reasoningTokens          Int?
+  timestamp       DateTime @default(now())
+  model           String?
+  finalResult     String?
+  skill           String?
+  skills          String?  // JSON array of strings (skill names)
+  invokedSkills   String?  // JSON array of {name: string, version: number | null}
+  isSkillCorrect  Boolean? @default(false)
+  isAnswerCorrect Boolean? @default(false)
+  answerScore     Float?
+  skillScore      Float?
+  judgmentReason  String?
+  failures        String?  // JSON array of failures objects
+  skillIssues     String?  // JSON array of skill issue analysis
+  skillVersion    Int?
+  label           String?
+  user            String?
+  skillRecallRate      Float? // Execution-level metric: correct_invoked_skills / expected_skills (per execution)
+}
+
+model Config {
+  id             String   @id @default(cuid())
+  query          String?
+  skill          String   @default("") // Ground truth skill name (Legacy - use expectedSkills instead)
+  skillVersion   Int? // Expected skill version (Legacy - use expectedSkills instead)
+  datasetType    String   @default("combined") // combined | routing | outcome
+  routingIntent  String?
+  routingAnchors String? // JSON array of semantic anchor phrases
+  expectedSkills String? // JSON array of {skill: string, version: number | null}
+  standardAnswer String
+  rootCauses     String? // JSON array
+  keyActions     String? // JSON array
+  extractedKeyActions String? // JSON array of ExtractedKeyAction (auto-extracted from Skill)
+  user           String? // Added for user isolation
+  parseStatus    String   @default("completed") // parsing | completed | failed
+
+  @@unique([query, user, datasetType]) // Allow routing and outcome datasets to coexist for one query
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  taskId       String   @unique
+  label        String?
+  query        String?
+  startTime    DateTime @default(now())
+  endTime      DateTime?
+  interactions String?  // JSON array of interactions
+  user         String?
+  model        String?
+}
+
+model UserSettings {
+  id             String @id @default(cuid())
+  user           String @unique
+  settingsJson   String // Store ServerSettingsV2 as JSON string
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ParsedFlow {
+  id          String   @id @default(cuid())
+  skillId     String
+  version     Int
+  user        String?
+  
+  flowJson    String?  // JSON: { steps, branches }
+  mermaidCode String?  // Generated Mermaid code
+  
+  parsedAt    DateTime @default(now())
+  
+  @@unique([skillId, version, user])
+}
+
+model ExecutionMatch {
+  id              String   @id @default(cuid())
+  executionId     String   @unique
+  skillId         String?
+  skillVersion    Int?
+  user            String?
+  
+  mode            String   @default("compare")  // "compare" or "dynamic"
+  matchJson       String?  // JSON: { matches, summary }
+  staticMermaid   String?  // Static flow Mermaid code
+  dynamicMermaid  String?  // Dynamic flow Mermaid code
+  analysisText    String?  // LLM analysis text
+  extractedSteps  String?  // JSON: extracted steps from interactions
+  
+  interactionCount Int    // Number of interactions at analysis time
+  
+  matchedAt       DateTime @default(now())
+}
+
+model UserGuideState {
+  id                String   @id @default(cuid())
+  user              String   @unique
+  guideDisabled     Boolean  @default(false)
+  currentStep       Int      @default(0)
+  completedSteps    String   @default("[]")
+  skippedSteps      String   @default("[]")
+  lastShownAt       DateTime?
+  dismissedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
